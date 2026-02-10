@@ -42,6 +42,10 @@ local currentState = {
 local previewModel = nil
 local previewIsValid = false
 local previewPos = Vector3.new(0, 0, 0)
+local previewGroundAnchor = nil
+local previewAnchorPart = nil
+local previewVisualPos = nil
+local PREVIEW_SMOOTH_SPEED = 22
 
 local currentRangePart = nil
 local nextRangePart = nil
@@ -341,39 +345,26 @@ local function getGroundAnchorAttachment(model)
     return nil
 end
 
-local function placeModelOnGround(model, targetPos)
-    local groundAnchor = getGroundAnchorAttachment(model)
-    if groundAnchor then
-        local ap = groundAnchor.WorldPosition
-        local xzDelta = Vector3.new(targetPos.X - ap.X, 0, targetPos.Z - ap.Z)
-        model:PivotTo(model:GetPivot() + xzDelta)
-
-        local yDelta = targetPos.Y - groundAnchor.WorldPosition.Y
-        model:PivotTo(model:GetPivot() + Vector3.new(0, yDelta, 0))
-        return
+local function getModelGroundPoint(model, groundAnchor, anchor)
+    if groundAnchor and groundAnchor.Parent then
+        return groundAnchor.WorldPosition
     end
 
-    local anchor = getPlacementAnchorPart(model)
-
-    if anchor then
-        local anchorPos = anchor.Position
-        local xzDelta = Vector3.new(targetPos.X - anchorPos.X, 0, targetPos.Z - anchorPos.Z)
-        model:PivotTo(model:GetPivot() + xzDelta)
-
-        local bottomY = anchor.Position.Y - anchor.Size.Y * 0.5
-        local yDelta = targetPos.Y - bottomY
-        model:PivotTo(model:GetPivot() + Vector3.new(0, yDelta, 0))
-        return
+    if anchor and anchor.Parent then
+        return anchor.CFrame:PointToWorldSpace(Vector3.new(0, -anchor.Size.Y * 0.5, 0))
     end
-
-    local pivot = model:GetPivot()
-    local xzDelta = Vector3.new(targetPos.X - pivot.Position.X, 0, targetPos.Z - pivot.Position.Z)
-    model:PivotTo(pivot + xzDelta)
 
     local boxCF, boxSize = model:GetBoundingBox()
-    local bottomY = boxCF.Position.Y - boxSize.Y * 0.5
-    local yDelta = targetPos.Y - bottomY
-    model:PivotTo(model:GetPivot() + Vector3.new(0, yDelta, 0))
+    return Vector3.new(boxCF.Position.X, boxCF.Position.Y - boxSize.Y * 0.5, boxCF.Position.Z)
+end
+
+local function placeModelOnGround(model, targetPos, groundAnchor, anchor)
+    local refPoint = getModelGroundPoint(model, groundAnchor, anchor)
+    local delta = targetPos - refPoint
+    if delta.Magnitude < 1e-5 then
+        return
+    end
+    model:PivotTo(model:GetPivot() + delta)
 end
 
 local function isPlacementValidClient(pos)
@@ -427,6 +418,10 @@ local function clearPreview()
         previewModel:Destroy()
         previewModel = nil
     end
+
+    previewGroundAnchor = nil
+    previewAnchorPart = nil
+    previewVisualPos = nil
 end
 
 local function rebuildPreview()
@@ -434,6 +429,9 @@ local function rebuildPreview()
 
     if not selectedTowerKey then
         previewIsValid = false
+        previewGroundAnchor = nil
+        previewAnchorPart = nil
+        previewVisualPos = nil
         return
     end
 
@@ -461,8 +459,15 @@ local function rebuildPreview()
         previewModel:Destroy()
         previewModel = nil
         previewIsValid = false
+        previewGroundAnchor = nil
+        previewAnchorPart = nil
+        previewVisualPos = nil
         return
     end
+
+    previewGroundAnchor = getGroundAnchorAttachment(previewModel)
+    previewAnchorPart = getPlacementAnchorPart(previewModel)
+    previewVisualPos = nil
 
     setPreviewTint(previewModel, false)
     previewIsValid = false
@@ -1325,12 +1330,20 @@ towerPanelUpgradeBtn.MouseLeave:Connect(function()
     updateTowerPanel()
 end)
 
-RunService.RenderStepped:Connect(function()
+RunService.RenderStepped:Connect(function(dt)
     if selectedTowerKey and previewModel then
         local groundPos = getCursorGroundPlacement()
         if groundPos then
             previewPos = groundPos
-            placeModelOnGround(previewModel, previewPos)
+
+            if not previewVisualPos then
+                previewVisualPos = groundPos
+            else
+                local smoothAlpha = 1 - math.exp(-PREVIEW_SMOOTH_SPEED * math.max(0, dt or 0))
+                previewVisualPos = previewVisualPos:Lerp(groundPos, math.clamp(smoothAlpha, 0, 1))
+            end
+
+            placeModelOnGround(previewModel, previewVisualPos, previewGroundAnchor, previewAnchorPart)
 
             local valid = isPlacementValidClient(previewPos)
             if valid ~= previewIsValid then
