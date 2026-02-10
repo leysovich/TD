@@ -1,0 +1,45 @@
+{
+  "name": "TD",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "TD": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true,
+        "Config": {
+          "$path": "src/replicated/TD/Config.luau"
+        },
+        "Remotes": {
+          "$className": "Folder",
+          "PlaceTower": {
+            "$className": "RemoteEvent"
+          },
+          "StateUpdate": {
+            "$className": "RemoteEvent"
+          },
+          "TowerAction": {
+            "$className": "RemoteFunction"
+          }
+        }
+      },
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+
+    "ServerScriptService": {
+      "TDServer": {
+        "$path": "src/server/TDServer"
+      }
+    },
+
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "TDClient": {
+          "$path": "src/client/TDClient"
+        }
+      }
+    }
+  }
+}
